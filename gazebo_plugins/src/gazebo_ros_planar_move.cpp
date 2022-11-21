@@ -139,7 +139,81 @@ namespace gazebo
     x_ = 0;
     y_ = 0;
     rot_ = 0;
+    linear_cmd_ = ignition::math::Vector3d();
+    angular_cmd_ = ignition::math::Vector3d();
+    last_linear_cmd_ = ignition::math::Vector3d();
+    last_angular_cmd_ = ignition::math::Vector3d();
     alive_ = true;
+    recover_roll_velocity_p_gain_  = 100; /*10.0;*/
+    recover_pitch_velocity_p_gain_ = 100; /*10.0;*/
+    recover_z_velocity_p_gain_ = 1000; /*1.0;*/
+
+    if (sdf->HasElement("recover_roll_velocity_p_gain"))
+      (sdf->GetElement("recover_roll_velocity_p_gain")->GetValue()->Get(recover_roll_velocity_p_gain_));
+    if (sdf->HasElement("recover_pitch_velocity_p_gain"))
+      (sdf->GetElement("recover_pitch_velocity_p_gain")->GetValue()->Get(recover_pitch_velocity_p_gain_));
+    if (sdf->HasElement("recover_z_velocity_p_gain"))
+      (sdf->GetElement("recover_z_velocity_p_gain")->GetValue()->Get(recover_z_velocity_p_gain_));
+    ROS_INFO("PlanarMovePlugin (ns = %s) recover_roll_velocity_p_gain_ = %f", robot_namespace_.c_str(), recover_roll_velocity_p_gain_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) recover_pitch_velocity_p_gain_ = %f", robot_namespace_.c_str(), recover_pitch_velocity_p_gain_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) recover_z_velocity_p_gain_ = %f", robot_namespace_.c_str(), recover_z_velocity_p_gain_);
+
+    x_velocity_limit_max_ = 1.0;
+    x_velocity_limit_min_ =-1.0;
+    y_velocity_limit_max_ = 1.0;
+    y_velocity_limit_min_ =-1.0;
+    rot_velocity_limit_max_ = 1.0;
+    rot_velocity_limit_min_ =-1.0;
+    x_acceleration_limit_max_ = 1.0;
+    x_acceleration_limit_min_ =-1.0;
+    y_acceleration_limit_max_ = 1.0;
+    y_acceleration_limit_min_ =-1.0;
+    rot_acceleration_limit_max_ = 1.0;
+    rot_acceleration_limit_min_ =-1.0;
+
+    if (sdf->HasElement("x_velocity_limit_max"))
+      (sdf->GetElement("x_velocity_limit_max")->GetValue()->Get(x_velocity_limit_max_));
+    if (sdf->HasElement("x_velocity_limit_min"))
+      (sdf->GetElement("x_velocity_limit_min")->GetValue()->Get(x_velocity_limit_min_));
+    if (sdf->HasElement("y_velocity_limit_max"))
+      (sdf->GetElement("y_velocity_limit_max")->GetValue()->Get(y_velocity_limit_max_));
+    if (sdf->HasElement("y_velocity_limit_min"))
+      (sdf->GetElement("y_velocity_limit_min")->GetValue()->Get(y_velocity_limit_min_));
+    if (sdf->HasElement("rot_velocity_limit_max"))
+      (sdf->GetElement("rot_velocity_limit_max")->GetValue()->Get(rot_velocity_limit_max_));
+    if (sdf->HasElement("rot_velocity_limit_min"))
+      (sdf->GetElement("rot_velocity_limit_min")->GetValue()->Get(rot_velocity_limit_min_));
+    if (sdf->HasElement("x_acceleration_limit_max"))
+      (sdf->GetElement("x_acceleration_limit_max")->GetValue()->Get(x_acceleration_limit_max_));
+    if (sdf->HasElement("x_acceleration_limit_min"))
+      (sdf->GetElement("x_acceleration_limit_min")->GetValue()->Get(x_acceleration_limit_min_));
+    if (sdf->HasElement("y_acceleration_limit_max"))
+      (sdf->GetElement("y_acceleration_limit_max")->GetValue()->Get(y_acceleration_limit_max_));
+    if (sdf->HasElement("y_acceleration_limit_min"))
+      (sdf->GetElement("y_acceleration_limit_min")->GetValue()->Get(y_acceleration_limit_min_));
+    if (sdf->HasElement("rot_acceleration_limit_max"))
+      (sdf->GetElement("rot_acceleration_limit_max")->GetValue()->Get(rot_acceleration_limit_max_));
+    if (sdf->HasElement("rot_acceleration_limit_min"))
+      (sdf->GetElement("rot_acceleration_limit_min")->GetValue()->Get(rot_acceleration_limit_min_));
+
+    ROS_INFO("PlanarMovePlugin (ns = %s) x_velocity_limit_max_ = %f", robot_namespace_.c_str(), x_velocity_limit_max_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) x_velocity_limit_min_ = %f", robot_namespace_.c_str(), x_velocity_limit_min_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) y_velocity_limit_max_ = %f", robot_namespace_.c_str(), y_velocity_limit_max_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) y_velocity_limit_min_ = %f", robot_namespace_.c_str(), y_velocity_limit_min_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) rot_velocity_limit_max_ = %f", robot_namespace_.c_str(), rot_velocity_limit_max_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) rot_velocity_limit_min_ = %f", robot_namespace_.c_str(), rot_velocity_limit_min_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) x_acceleration_limit_max_ = %f", robot_namespace_.c_str(), x_acceleration_limit_max_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) x_acceleration_limit_min_ = %f", robot_namespace_.c_str(), x_acceleration_limit_min_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) y_acceleration_limit_max_ = %f", robot_namespace_.c_str(), y_acceleration_limit_max_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) y_acceleration_limit_min_ = %f", robot_namespace_.c_str(), y_acceleration_limit_min_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) rot_acceleration_limit_max_ = %f", robot_namespace_.c_str(), rot_acceleration_limit_max_);
+    ROS_INFO("PlanarMovePlugin (ns = %s) rot_acceleration_limit_min_ = %f", robot_namespace_.c_str(), rot_acceleration_limit_min_);
+
+    // joint_state_idel_sec
+    joint_state_idel_sec_ = -1;
+    if (sdf->HasElement("joint_state_idel_sec"))
+      (sdf->GetElement("joint_state_idel_sec")->GetValue()->Get(joint_state_idel_sec_));
+    last_cmd_subscribe_time_ = parent_->GetWorld()->SimTime();
 
     // Ensure that ROS has been initialized and subscribe to cmd_vel
     if (!ros::isInitialized())
@@ -175,6 +249,11 @@ namespace gazebo
     update_connection_ =
       event::Events::ConnectWorldUpdateBegin(
           boost::bind(&GazeboRosPlanarMove::UpdateChild, this));
+    
+    rayShape_ = boost::dynamic_pointer_cast<physics::RayShape>(
+         parent_->GetWorld()->Physics()->CreateShape("ray", physics::CollisionPtr()));
+
+    this->last_time_ = parent_->GetWorld()->SimTime();
 
   }
 
@@ -186,6 +265,11 @@ namespace gazebo
     IGN_PROFILE_BEGIN("fill ROS message");
 #endif
     boost::mutex::scoped_lock scoped_lock(lock);
+#if GAZEBO_MAJOR_VERSION >= 8
+    common::Time current_time = parent_->GetWorld()->SimTime();
+#else
+    common::Time current_time = parent_->GetWorld()->GetSimTime();
+#endif
     if (cmd_timeout_>=0)
     {
       if ((ros::Time::now()-last_cmd_received_time_).toSec() > cmd_timeout_)
@@ -201,20 +285,72 @@ namespace gazebo
     ignition::math::Pose3d pose = parent_->GetWorldPose().Ign();
 #endif
     float yaw = pose.Rot().Yaw();
-    parent_->SetLinearVel(ignition::math::Vector3d(
-          x_ * cosf(yaw) - y_ * sinf(yaw),
-          y_ * cosf(yaw) + x_ * sinf(yaw),
-          0));
-    parent_->SetAngularVel(ignition::math::Vector3d(0, 0, rot_));
+    float dt  = (current_time-this->last_time_).Double();
+
+    ignition::math::Vector3d gravity(parent_->GetWorld()->Gravity());
+    ignition::math::Vector3d linear_vel = ignition::math::Matrix4d(pose.Rot()).Inverse() * parent_->WorldLinearVel();
+    ignition::math::Vector3d angular_vel = parent_->WorldAngularVel();
+
+    // check for joint_state_idel_sec_
+    if ( joint_state_idel_sec_ > 0 &&
+         (current_time-this->last_cmd_subscribe_time_).Double() > joint_state_idel_sec_ ) {
+      if (int((current_time-this->last_cmd_subscribe_time_).Double()*1000)%5000 < 1 ) {
+        ROS_WARN("PlanarMovePlugin (ns = %s) did not received %s for %f sec",
+                 robot_namespace_.c_str(), command_topic_.c_str(), joint_state_idel_sec_);
+      }
+      x_ = y_ = rot_ = 0;
+    }
+    linear_cmd_ = ignition::math::Vector3d (x_, y_, 0);
+    angular_cmd_ = ignition::math::Vector3d(-recover_roll_velocity_p_gain_ * pose.Rot().Roll(),
+                                 -recover_pitch_velocity_p_gain_* pose.Rot().Pitch(),
+                                 rot_);
+    // put on the ground
+    double distBelow;
+    std::string entityName;
+    gazebo::physics::EntityPtr entityBelow;
+    gazebo::physics::EntityPtr fromEntity = parent_;
+    this->GetNearestEntityBelow(fromEntity, distBelow, entityName);
+    if ( ( ! entityName.empty() ) && distBelow >  0.00001 ) {
+      linear_cmd_[2] += recover_z_velocity_p_gain_ * gravity[2] * dt;
+    }
+
+    // accel limit
+    ignition::math::Vector3d linear_acc  = (linear_cmd_  - last_linear_cmd_)/dt;
+    ignition::math::Vector3d angular_acc = (angular_cmd_ - last_angular_cmd_)/dt;
+
+    if ( linear_acc[0] > x_acceleration_limit_max_)  linear_cmd_[0] = last_linear_cmd_[0] + x_acceleration_limit_max_*dt;
+    if ( linear_acc[0] < x_acceleration_limit_min_)  linear_cmd_[0] = last_linear_cmd_[0] + x_acceleration_limit_min_*dt;
+    if ( linear_acc[1] > y_acceleration_limit_max_)  linear_cmd_[1] = last_linear_cmd_[1] + y_acceleration_limit_max_*dt;
+    if ( linear_acc[1] < y_acceleration_limit_min_)  linear_cmd_[1] = last_linear_cmd_[1] + y_acceleration_limit_min_*dt;
+    if ( angular_acc[2] > rot_acceleration_limit_max_) angular_cmd_[2] = last_angular_cmd_[2] + rot_acceleration_limit_max_*dt;
+    if ( angular_acc[2] < rot_acceleration_limit_min_) angular_cmd_[2] = last_angular_cmd_[2] + rot_acceleration_limit_min_*dt;
+
+    // velocity limit
+    if ( linear_cmd_[0] > x_velocity_limit_max_ ) linear_cmd_[0] = x_velocity_limit_max_;
+    if ( linear_cmd_[0] < x_velocity_limit_min_ ) linear_cmd_[0] = x_velocity_limit_min_;
+    if ( linear_cmd_[1] > y_velocity_limit_max_ ) linear_cmd_[1] = y_velocity_limit_max_;
+    if ( linear_cmd_[1] < y_velocity_limit_min_ ) linear_cmd_[1] = y_velocity_limit_min_;
+    if ( angular_cmd_[2] > rot_velocity_limit_max_ ) angular_cmd_[2] = rot_velocity_limit_max_;
+    if ( angular_cmd_[2] < rot_velocity_limit_min_ ) angular_cmd_[2] = rot_velocity_limit_min_;
+
+    // compensate to horizental velocity
+    ignition::math::Matrix3d pitch = ignition::math::Matrix3d();
+    pitch.Axis(ignition::math::Vector3d(0,-1,0), pose.Rot().Pitch());
+
+    if ( angular_cmd_[0] >  M_PI/2 ) angular_cmd_[0] =  M_PI/2;
+    if ( angular_cmd_[0] < -M_PI/2 ) angular_cmd_[0] = -M_PI/2;
+    if ( angular_cmd_[1] >  M_PI/2 ) angular_cmd_[1] =  M_PI/2;
+    if ( angular_cmd_[1] < -M_PI/2 ) angular_cmd_[1] = -M_PI/2;
+    
+    ignition::math::Vector3d temp_ = pitch * linear_cmd_;
+    parent_->SetLinearVel(ignition::math::Matrix4d(pose.Rot()) * temp_);
+    parent_->SetAngularVel(ignition::math::Matrix4d(pose.Rot()) * angular_cmd_);
+
+
 #ifdef ENABLE_PROFILER
     IGN_PROFILE_END();
 #endif
     if (odometry_rate_ > 0.0) {
-#if GAZEBO_MAJOR_VERSION >= 8
-      common::Time current_time = parent_->GetWorld()->SimTime();
-#else
-      common::Time current_time = parent_->GetWorld()->GetSimTime();
-#endif
       double seconds_since_last_update =
         (current_time - last_odom_publish_time_).Double();
       if (seconds_since_last_update > (1.0 / odometry_rate_)) {
@@ -228,6 +364,13 @@ namespace gazebo
         last_odom_publish_time_ = current_time;
       }
     }
+#if GAZEBO_MAJOR_VERSION >= 8
+    this->last_time_ = parent_->GetWorld()->SimTime();
+#else
+    this->last_time_ = parent_->GetWorld()->GetSimTime();
+#endif
+    this->last_linear_cmd_ = linear_cmd_;
+    this->last_angular_cmd_ = angular_cmd_;
   }
 
   // Finalize the controller
@@ -247,6 +390,11 @@ namespace gazebo
     x_ = cmd_msg->linear.x;
     y_ = cmd_msg->linear.y;
     rot_ = cmd_msg->angular.z;
+#if GAZEBO_MAJOR_VERSION >= 8
+    last_cmd_subscribe_time_ = parent_->GetWorld()->SimTime();
+#else
+    last_cmd_subscribe_time_ = parent_->GetWorld()->GetSimTime();
+#endif
   }
 
   void GazeboRosPlanarMove::QueueThread()
@@ -303,7 +451,7 @@ namespace gazebo
     if (rot_ > M_PI / step_time)
     {
       // we cannot calculate the angular velocity correctly
-      odom_.twist.twist.angular.z = rot_;
+      odom_.twist.twist.angular.z = this->angular_cmd_[2];
     }
     else
     {
